@@ -24,7 +24,7 @@ Este es el servicio API Python para generar archivos FIT de Garmin, diseñado pa
    - **Name:** `fit-generator-api`
    - **Environment:** `Python 3`
    - **Build Command:** `pip install -r requirements.txt`
-   - **Start Command:** `gunicorn --bind 0.0.0.0:$PORT api_service:app`
+   - **Start Command:** `gunicorn -c gunicorn.conf.py api_service:app`
    - **Plan:** Free (para empezar)
 
 ### Paso 3: Variables de Entorno (Opcional)
@@ -40,6 +40,8 @@ render_deploy/
 ├── api_service.py          # Servicio Flask principal
 ├── requirements.txt        # Dependencias Python
 ├── render.yaml            # Configuración Render
+├── gunicorn.conf.py       # Configuración Gunicorn
+├── Procfile               # Comando de inicio alternativo
 ├── garmin_fit_sdk/        # SDK de Garmin FIT
 └── README.md              # Este archivo
 ```
@@ -82,6 +84,31 @@ Una vez desplegado, actualiza la URL del API en tu plugin WordPress:
 private $api_base_url = 'https://tu-app.onrender.com';
 ```
 
+## 🆘 Solución de Problemas
+
+### Error "No module named 'app'"
+✅ **SOLUCIONADO** - Ahora usa `gunicorn.conf.py` y `Procfile`
+
+### Comandos de inicio alternativos:
+1. `gunicorn -c gunicorn.conf.py api_service:app` (Recomendado)
+2. `gunicorn --bind 0.0.0.0:$PORT api_service:app` (Básico)
+3. `python api_service.py` (Solo para desarrollo)
+
+### Error de Build
+```bash
+# Verificar requirements.txt
+pip install -r requirements.txt
+```
+
+### Error de Start
+```bash
+# Probar localmente
+gunicorn -c gunicorn.conf.py api_service:app
+```
+
+### Error de SDK
+El API incluye un fallback básico si el SDK de Garmin no se carga correctamente.
+
 ## 📊 Monitoreo
 
 Render.com proporciona:
@@ -95,20 +122,3 @@ Render.com proporciona:
 - **Plan Free:** Gratis con limitaciones
 - **Plan Starter:** $7/mes - Recomendado para producción
 - **Plan Pro:** $25/mes - Para mayor tráfico
-
-## 🆘 Solución de Problemas
-
-### Error de Build
-```bash
-# Verificar requirements.txt
-pip install -r requirements.txt
-```
-
-### Error de Start
-```bash
-# Probar localmente
-gunicorn --bind 0.0.0.0:5000 api_service:app
-```
-
-### Error de SDK
-El API incluye un fallback básico si el SDK de Garmin no se carga correctamente.
