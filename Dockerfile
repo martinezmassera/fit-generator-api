@@ -1,22 +1,18 @@
-# Usar imagen base de Python con Java
-FROM python:3.9-slim
+# Usar imagen base de Python con Java preinstalado
+FROM openjdk:11-jre-slim
 
-# Instalar Java y herramientas necesarias
+# Instalar Python y pip
 RUN apt-get update && \
-    apt-get install -y openjdk-11-jre-headless procps && \
+    apt-get install -y python3 python3-pip python3-venv && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Establecer JAVA_HOME y PATH de forma más explícita
-ENV JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
-ENV PATH=$JAVA_HOME/bin:$PATH
+# Crear enlaces simbólicos para python
+RUN ln -sf /usr/bin/python3 /usr/bin/python
+RUN ln -sf /usr/bin/pip3 /usr/bin/pip
 
-# Crear enlaces simbólicos para asegurar que java esté disponible
-RUN ln -sf $JAVA_HOME/bin/java /usr/local/bin/java
-RUN ln -sf $JAVA_HOME/bin/javac /usr/local/bin/javac
-
-# Verificar instalación de Java
-RUN java -version && which java
+# Verificar que Java y Python estén disponibles
+RUN java -version && python --version
 
 # Establecer directorio de trabajo
 WORKDIR /app
@@ -36,11 +32,11 @@ RUN ls -la fit.jar
 # Exponer el puerto
 EXPOSE 10000
 
-# Comando para ejecutar la aplicación con verificación de Java
-CMD echo "=== VERIFICACIÓN DE JAVA ===" && \
+# Comando para ejecutar la aplicación
+CMD echo "=== VERIFICACIÓN DEL ENTORNO ===" && \
+    echo "Java version:" && java -version && \
+    echo "Python version:" && python --version && \
     echo "JAVA_HOME: $JAVA_HOME" && \
     echo "PATH: $PATH" && \
-    which java && \
-    java -version && \
     echo "=== INICIANDO APLICACIÓN ===" && \
     gunicorn --bind 0.0.0.0:$PORT --timeout 120 --workers 1 api_service:app
