@@ -37,9 +37,24 @@ class FitJavaWrapper:
         
         # Verificar que Java está disponible
         try:
-            subprocess.run(['java', '-version'], capture_output=True, check=True)
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            raise RuntimeError("Java no está disponible en el sistema")
+            result = subprocess.run(['java', '-version'], capture_output=True, check=True, text=True)
+            logger.info(f"Java disponible: {result.stderr}")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Java falló con código {e.returncode}: {e.stderr}")
+            raise RuntimeError(f"Java no está disponible en el sistema: {e.stderr}")
+        except FileNotFoundError as e:
+            logger.error(f"Comando java no encontrado: {e}")
+            # Intentar con ruta completa
+            try:
+                java_path = "/usr/lib/jvm/java-11-openjdk-amd64/bin/java"
+                result = subprocess.run([java_path, '-version'], capture_output=True, check=True, text=True)
+                logger.info(f"Java encontrado en ruta completa: {result.stderr}")
+            except Exception as e2:
+                logger.error(f"Java no disponible en ruta completa: {e2}")
+                raise RuntimeError(f"Java no está disponible en el sistema: {e}")
+        except Exception as e:
+            logger.error(f"Error inesperado verificando Java: {e}")
+            raise RuntimeError(f"Java no está disponible en el sistema: {e}")
         
         logger.info(f"FitJavaWrapper inicializado con fit.jar en: {self.fit_jar_path}")
     
