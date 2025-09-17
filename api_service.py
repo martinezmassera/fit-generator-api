@@ -91,68 +91,133 @@ def generate_fit_file(routine_data):
         return None
 
 def generate_workout_fit_file(routine_data, filename):
-    """Generar archivo FIT de workout compatible con Garmin usando el SDK"""
+    """Generar archivo FIT de workout compatible con Garmin Connect"""
     try:
-        from garmin_fit_sdk import Decoder, Stream
-        from garmin_fit_sdk.profile import Profile
-        import struct
-        from datetime import datetime
+        logger.info("Generando archivo FIT de workout compatible con Garmin...")
         
-        # Crear estructura de archivo FIT de workout
+        # Crear archivo temporal
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.fit')
+        
+        # Header FIT (14 bytes)
+        header = bytearray(14)
+        header[0] = 14  # Header size
+        header[1] = 0x20  # Protocol version 2.0
+        header[2:4] = (2171).to_bytes(2, 'little')  # Profile version
+        header[8:12] = b'.FIT'  # Data type signature
+        
+        # Crear datos del archivo FIT
         fit_data = bytearray()
         
-        # 1. Header FIT (14 bytes)
-        header_size = 14
-        protocol_version = 0x20  # Versión 2.0
-        profile_version = 2171   # Versión del perfil
-        data_size = 0  # Se calculará después
-        data_type = b'.FIT'
+        # File ID Message (mensaje básico requerido)
+        # Definition message para File ID (mesg_num = 0)
+        fit_data.extend([
+            0x40,  # Definition message header
+            0x00,  # Reserved
+            0x00,  # Architecture (little endian)
+            0x00, 0x00,  # Global message number (0 = File ID)
+            0x05,  # Number of fields
+            # Field definitions: field_def_num, size, base_type
+            0x00, 0x01, 0x00,  # Type (1 byte, enum)
+            0x01, 0x02, 0x84,  # Manufacturer (2 bytes, uint16)
+            0x02, 0x02, 0x84,  # Product (2 bytes, uint16)
+            0x03, 0x04, 0x86,  # Serial Number (4 bytes, uint32z)
+            0x04, 0x04, 0x86,  # Time Created (4 bytes, uint32)
+        ])
         
-        header = bytearray(header_size)
-        header[0] = header_size
-        header[1] = protocol_version
-        header[2:4] = profile_version.to_bytes(2, 'little')
-        # data_size se escribirá después
-        header[8:12] = data_type
+        # Data message para File ID
+        current_time = int(datetime.now().timestamp()) - 631065600  # FIT epoch
+        fit_data.extend([
+            0x00,  # Data message header
+            0x06,  # Type: workout file (6, no 4 que es activity)
+            0xFF, 0xFF,  # Manufacturer: development (65535)
+            0x00, 0x00,  # Product: 0
+            0x12, 0x34, 0x56, 0x78,  # Serial number (ejemplo)
+        ])
+        fit_data.extend(current_time.to_bytes(4, 'little'))  # Time created
         
-        # 2. Mensajes FIT
-        messages = bytearray()
+        # Workout Message (mensaje principal del workout)
+        # Definition message para Workout (mesg_num = 26)
+        fit_data.extend([
+            0x41,  # Definition message header, local message type 1
+            0x00,  # Reserved
+            0x00,  # Architecture (little endian)
+            0x1A, 0x00,  # Global message number (26 = Workout)
+            0x03,  # Number of fields
+            # Field definitions - CORREGIDOS
+            0x04, 0x10, 0x07,  # Wkt Name (16 bytes, string) - field 4
+            0x05, 0x01, 0x00,  # Sport (1 byte, enum) - field 5  
+            0x06, 0x02, 0x84,  # Num Valid Steps (2 bytes, uint16) - field 6
+        ])
         
-        # File ID Message (requerido)
-        file_id_msg = create_file_id_message()
-        messages.extend(file_id_msg)
+        # Data message para Workout
+        workout_name = routine_data.get('routine_name', 'Rutina')[:15]
+        name_bytes = workout_name.encode('utf-8')
+        name_padded = name_bytes + b'\x00' * (16 - len(name_bytes))
         
-        # Workout Message
-        workout_name = routine_data.get('routine_name', 'Rutina')
-        workout_msg = create_workout_message(workout_name, len(routine_data.get('steps', [])))
-        messages.extend(workout_msg)
+        fit_data.extend([0x01])  # Data message header, local message type 1
+        fit_data.extend(name_padded)  # Workout name (16 bytes)
+        fit_data.extend([0x01])  # Sport: running (1)
+        fit_data.extend(len(routine_data.get('steps', [])).to_bytes(2, 'little'))  # Num steps
         
-        # Workout Step Messages
-        step_index = 0
-        for step in routine_data.get('steps', []):
-            step_msg = create_workout_step_message(step_index, step)
-            messages.extend(step_msg)
-            step_index += 1
+        # Workout Step Messages - ESTRUCTURA CORREGIDA
+        steps = routine_data.get('steps', [])
+        for i, step in enumerate(steps):
+            # Definition message para Workout Step (mesg_num = 27)
+            fit_data.extend([
+                0x42,  # Definition message header, local message type 2
+                0x00,  # Reserved
+                0x00,  # Architecture (little endian)
+                0x1B, 0x00,  # Global message number (27 = Workout Step)
+                0x06,  # Number of fields
+                # Field definitions - CORREGIDOS según especificación FIT
+                0x00, 0x02, 0x84,  # Message Index (2 bytes, uint16) - field 0
+                0x01, 0x10, 0x07,  # Wkt Step Name (16 bytes, string) - field 1
+                0x02, 0x01, 0x00,  # Duration Type (1 byte, enum) - field 2
+                0x03, 0x04, 0x86,  # Duration Value (4 bytes, uint32) - field 3
+                0x04, 0x01, 0x00,  # Target Type (1 byte, enum) - field 4
+                0x06, 0x01, 0x00,  # Intensity (1 byte, enum) - field 6
+            ])
+            
+            # Data message para Workout Step
+            duration_seconds = parse_duration(step.get('time', '60'))
+            intensity = map_intensity(step.get('type', ''))
+            step_name = f"{step.get('type', 'Step')} {i + 1}"
+            
+            # Preparar nombre del paso (16 bytes)
+            step_name_bytes = step_name.encode('utf-8')[:15]
+            step_name_padded = step_name_bytes + b'\x00' * (16 - len(step_name_bytes))
+            
+            fit_data.extend([0x02])  # Data message header, local message type 2
+            fit_data.extend(i.to_bytes(2, 'little'))  # Message index
+            fit_data.extend(step_name_padded)  # Step name (16 bytes)
+            fit_data.extend([0x00])  # Duration type (0 = time)
+            fit_data.extend((duration_seconds * 1000).to_bytes(4, 'little'))  # Duration in ms
+            fit_data.extend([0x00])  # Target type (0 = speed)
+            fit_data.extend([intensity])  # Intensity
         
         # Calcular tamaño de datos
-        data_size = len(messages)
+        data_size = len(fit_data)
         header[4:8] = data_size.to_bytes(4, 'little')
         
         # CRC del header
         header_crc = calculate_crc(header[:12])
         header[12:14] = header_crc.to_bytes(2, 'little')
         
-        # Combinar header y mensajes
-        fit_data.extend(header)
-        fit_data.extend(messages)
+        # Escribir header y datos
+        temp_file.write(header)
+        temp_file.write(fit_data)
         
-        # CRC final del archivo
-        file_crc = calculate_crc(fit_data)
-        fit_data.extend(file_crc.to_bytes(2, 'little'))
+        # CRC final del archivo completo
+        temp_file.seek(0)
+        all_data = temp_file.read()
+        file_crc = calculate_crc(all_data)
+        temp_file.write(file_crc.to_bytes(2, 'little'))
         
-        # Escribir archivo
-        with open(filename, 'wb') as f:
-            f.write(fit_data)
+        temp_file.close()
+        
+        # Mover archivo temporal al nombre deseado
+        import shutil
+        shutil.move(temp_file.name, filename)
         
         logger.info(f"Archivo FIT de workout generado: {filename}")
         return filename
