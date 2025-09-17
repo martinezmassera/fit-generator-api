@@ -25,11 +25,11 @@ class FitJavaWrapper:
             java_sdk_path: Ruta al SDK de Java de Garmin
         """
         if java_sdk_path is None:
-            # Usar la ruta por defecto
-            java_sdk_path = "/Users/maxi/Documents/PLUGIN/FitSDKRelease_21.171.00/java"
-        
-        self.java_sdk_path = java_sdk_path
-        self.fit_jar_path = os.path.join(java_sdk_path, "fit.jar")
+            # Usar la ruta local del fit.jar
+            self.fit_jar_path = os.path.join(os.path.dirname(__file__), "fit.jar")
+        else:
+            self.java_sdk_path = java_sdk_path
+            self.fit_jar_path = os.path.join(java_sdk_path, "fit.jar")
         
         # Verificar que el JAR existe
         if not os.path.exists(self.fit_jar_path):
@@ -41,7 +41,7 @@ class FitJavaWrapper:
         except (subprocess.CalledProcessError, FileNotFoundError):
             raise RuntimeError("Java no está disponible en el sistema")
         
-        logger.info(f"FitJavaWrapper inicializado con SDK en: {java_sdk_path}")
+        logger.info(f"FitJavaWrapper inicializado con fit.jar en: {self.fit_jar_path}")
     
     def create_workout_fit(self, routine_data: Dict[str, Any], output_path: str = None) -> str:
         """
